@@ -59,7 +59,7 @@ def get_updates(config):
             elif operation == 'random_email':
                 for field in listify(details):
                     updates.append("`%(field)s` = CONCAT(`%(n)s`, '@inbucket.plurall.net')" % dict(field=field,n=pkName))
-                    print field
+                    print(field)
                     where = where + make_where(field, config)
 
             elif operation == 'random_username':
@@ -166,11 +166,11 @@ def anonymize(config):
     sql.extend(get_deletes(config))
     sql.extend(get_updates(config))
     for stmt in sql:
-        print
+        print()
         print(stmt + ';')
 
     print("SET FOREIGN_KEY_CHECKS=1;")
-    print
+    print()
 
 if __name__ == '__main__':
 
