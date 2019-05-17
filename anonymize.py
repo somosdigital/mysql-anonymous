@@ -42,43 +42,61 @@ def get_updates(config):
     for table, data in tables.iteritems():
         updates = []
         pkName = data["primary_key"]
+        where = []
         for operation, details in data.iteritems():
             if operation == 'nullify':
                 for field in listify(details):
                     updates.append("`%s` = NULL" % field)
+
             elif operation == 'random_int':
                 for field in listify(details):
                     updates.append("`%s` = ROUND(RAND()*1000000)" % field)
+
             elif operation == 'random_ip':
                 for field in listify(details):
                     updates.append("`%s` = INET_NTOA(RAND()*1000000000)" % field)
+
             elif operation == 'random_email':
                 for field in listify(details):
                     updates.append("`%(field)s` = CONCAT(`%(n)s`, '@inbucket.plurall.net')" % dict(field=field,n=pkName))
+                    print field
+                    where = where + make_where(field, config)
+
             elif operation == 'random_username':
                 for field in listify(details):
-                    updates.append("`%(s)s` = CONCAT('_user_', `%(n)s`)" % dict(s=field,n=pkName))
+                    updates.append("`{0}` = IF(({1} REGEXP '^[A-Za-z0-9._%\-+!#$&/=?^|~]+@[A-Za-z0-9.-]+[.][A-Za-z]+$'), CONCAT(`{2}`, '@inbucket.plurall.net'), CONCAT('_user_', `{3}`)) ".format(field, field, pkName, pkName))
+                    where = where + make_where(field, config)
+
             elif operation == 'hash_value':
                 for field in listify(details):
                     updates.append("`%(field)s` = MD5(CONCAT(@common_hash_secret, `%(field)s`))" % dict(field=field))
+
             elif operation == 'hash_email':
                 for field in listify(details):
                     updates.append("`%(field)s` = CONCAT(MD5(CONCAT(@common_hash_secret, `%(field)s`)), '@inbucket.plurall.net')" % dict(field=field))
+                    where = where + make_where(field, config)
+
             elif operation == 'random_date':
                 for field in listify(details):
                     updates.append("`%(field)s` = FROM_UNIXTIME(UNIX_TIMESTAMP(IFNULL(%(field)s, NOW())) + FLOOR(0 + (RAND() * 63072000)))" % dict(field=field))
+
             elif operation == 'random_name':
                 for field in listify(details):
                     updates.append("`%(field)s` = concat(generate_fname(), ' ', generate_lname()) " % dict(field=field))
+
             elif operation == 'random_cpf':
                 for field in listify(details):
                     cpf = generate_cpf()
                     updates.append("`%(field)s` = '%(cpf)s' " % dict(field=field, cpf=cpf))
+
             elif operation == 'delete':
                 continue
             else:
                 log.warning('Unknown operation.')
-        if updates:
+
+        if updates and where:
+            sql.append('UPDATE `%s` SET %s WHERE %s' % (table, ', '.join(updates), ' AND '.join(where)))
+        elif updates:
             sql.append('UPDATE `%s` SET %s' % (table, ', '.join(updates)))
     return sql
 
@@ -111,6 +129,13 @@ def generate_cnpj():
 
     return '%s%s%s%s%s%s%s%s%s%s%s%s%s%s' % tuple(cnpj[::-1])
 
+def make_where(field, config):
+    where = []
+    excluded_demains = config.get('excluded_demains', {})
+    for email in listify(excluded_demains):
+        where.append("`%(field)s` NOT LIKE '%(email)s'" % dict(field=field, email=email))
+
+    return where
 
 def anonymize(config):
     database = config.get('database', {})
@@ -141,6 +166,7 @@ def anonymize(config):
     sql.extend(get_deletes(config))
     sql.extend(get_updates(config))
     for stmt in sql:
+        print
         print(stmt + ';')
 
     print("SET FOREIGN_KEY_CHECKS=1;")
